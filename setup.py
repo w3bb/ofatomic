@@ -5,7 +5,7 @@ here = pathlib.Path(__file__).parent.resolve()
 long_description = (here / 'README.md').read_text(encoding='utf-8')
 setup(
     name='ofatomic',
-    version='0.5.1',
+    version='210602-R',
     description='A command line launcher for Open Fortress',
     long_description=long_description,
     long_description_content_type='text/markdown',

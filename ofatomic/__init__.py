@@ -53,22 +53,27 @@ def download_file_multi(path, fhash, sig, prefix, publickey):
     req = url + str(PurePosixPath(filename))
     path = prefix / filename
     print(req)
-    r = urllib.request.Request(req, headers={'User-Agent': 'Mozilla/5.0'})
-    u = urllib.request.urlopen(r)
+    try:
+        r = urllib.request.Request(req, headers={'User-Agent': 'Mozilla/5.0'})
+        u = urllib.request.urlopen(r)
+    except ConnectionResetError:
+        print("Timed out! you're going to have to redownload...")
+        return 1
     if str(filename.parents[0]) != '.':
         spath = path.parents[0]
         makedirs(spath, exist_ok=True)
     memfile = u.read()
     u.close()
-    if memfile:
-        memfile = decompress(memfile)
-    new_hash = SHA384.new(memfile)
-    if new_hash.hexdigest() != fhash and hashing == True:
-        raise ArithmeticError("HASH INVALID for file {}".format(filename))
-    if sig and signing == True:
-        key = RSA.import_key(publickey)
-        pkcs1_15.new(key).verify(new_hash, sig)
-        print("Signature valid!")
+    if hashing:
+        if memfile:
+            memfile = decompress(memfile)
+        new_hash = SHA384.new(memfile)
+        if new_hash.hexdigest() != fhash:
+            raise ArithmeticError("HASH INVALID for file {}".format(filename))
+        if sig and signing == True:
+            key = RSA.import_key(publickey)
+            pkcs1_15.new(key).verify(new_hash, sig)
+            print("Signature valid!")
     f = open(path, 'wb')
     print(path)
     f.write(memfile)
@@ -195,18 +200,21 @@ def main():
         for f in remote:
             if f in local:
                 continue
-            if cfg_write:
+            if not cfg_write:
                 if f[0] in local and ".cfg" in f[0]:
                     continue
             todl.append((f[0], f[1], f[2], str(prefix), keydata))
     if nproc > 1:
         try:
             dpool = Pool(nproc)
-            dpool.starmap(download_file_multi, todl)
+            res = dpool.starmap(download_file_multi, todl)
         except ImportError:
             nproc = 1
     if nproc <= 1:
-        starmap(download_file_multi,todl)
+        res = starmap(download_file_multi,todl)
+    if 1 in res:
+        print("download failed somewhere, redownloading suggested. DB has not been written to.")
+        return 1
     if not dry_run:
         cl.execute('ATTACH DATABASE "{}" AS remote'.format(rpath))
         cl.execute('INSERT OR REPLACE INTO files SELECT * FROM remote.files')
@@ -218,3 +226,4 @@ def main():
         gd_l.write(gd.read())
         gd_l.close()
     print("OF download completed!")
+    return 0
